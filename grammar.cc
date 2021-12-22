@@ -329,7 +329,8 @@ query_spec::query_spec(prod *p, struct scope *s, bool lateral) :
 
   if (d6() > 2) {
     ostringstream cons;
-    cons << "limit " << d100() + d100();
+    /* cons << "limit " << d100() + d100(); */
+    cons << "";
     limit_clause = cons.str();
   }
 }

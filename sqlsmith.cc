@@ -34,6 +34,10 @@ using boost::regex_match;
 #include "monetdb.hh"
 #endif
 
+#ifdef HAVE_LIBSYBDB
+#include "freetds.hh"
+#endif
+
 #include "postgres.hh"
 
 using namespace std;
@@ -62,7 +66,7 @@ int main(int argc, char *argv[])
   cerr << PACKAGE_NAME " " GITREV << endl;
 
   map<string,string> options;
-  regex optregex("--(help|log-to|verbose|target|sqlite|monetdb|version|dump-all-graphs|dump-all-queries|seed|dry-run|max-queries|rng-state|exclude-catalog)(?:=((?:.|\n)*))?");
+  regex optregex("--(help|log-to|verbose|target|sqlite|monetdb|freetds|freetds-user|freetds-pass|freetds-db|version|dump-all-graphs|dump-all-queries|seed|dry-run|max-queries|rng-state|exclude-catalog)(?:=((?:.|\n)*))?");
   
   for(char **opt = argv+1 ;opt < argv+argc; opt++) {
     smatch match;
@@ -83,6 +87,12 @@ int main(int argc, char *argv[])
 #endif
 #ifdef HAVE_MONETDB
       "    --monetdb=connstr    MonetDB database to send queries to" <<endl <<
+#endif
+#ifdef HAVE_LIBSYBDB
+      "    --freetds=ident         server label used in freetds.conf" <<endl <<
+      "    --freetds-user=username FreeTDS username" <<endl <<
+      "    --freetds-pass=pass     FreeTDS login password" <<endl <<
+      "    --freetds-db=dbname     FreetDS database to connect to" <<endl <<
 #endif
       "    --log-to=connstr     log errors to postgres database" << endl <<
       "    --seed=int           seed RNG with specified int instead of PID" << endl <<
@@ -105,18 +115,46 @@ int main(int argc, char *argv[])
       shared_ptr<schema> schema;
       if (options.count("sqlite")) {
 #ifdef HAVE_LIBSQLITE3
-	schema = make_shared<schema_sqlite>(options["sqlite"], options.count("exclude-catalog"));
+	    schema = make_shared<schema_sqlite>(options["sqlite"], options.count("exclude-catalog"));
 #else
-	cerr << "Sorry, " PACKAGE_NAME " was compiled without SQLite support." << endl;
-	return 1;
+	    cerr << "Sorry, " PACKAGE_NAME " was compiled without SQLite support." << endl;
+	    return 1;
 #endif
       }
       else if(options.count("monetdb")) {
 #ifdef HAVE_MONETDB
-	schema = make_shared<schema_monetdb>(options["monetdb"]);
+        schema = make_shared<schema_monetdb>(options["monetdb"]);
 #else
-	cerr << "Sorry, " PACKAGE_NAME " was compiled without MonetDB support." << endl;
-	return 1;
+        cerr << "Sorry, " PACKAGE_NAME " was compiled without MonetDB support." << endl;
+        return 1;
+#endif
+      }
+	  else if (options.count("freetds")) {
+#ifdef HAVE_LIBSYBDB
+
+	    /* Need username/password pair */
+	    if (!options.count("freetds-user")) {
+	      cerr << "option --freetds requires option --freetds-user" << endl;
+	      return 1;
+	    }
+
+	    if (!options.count("freetds-pass")) {
+	      cerr << "option --freetds requires option --freetds-pass" << endl;
+	      return 1;
+	    }
+
+	    if (!options.count("freetds-db")) {
+	      cerr << "option --freetds requires option --freetds-db" << endl;
+	      return 1;
+	    }
+
+	    freetds_conninfo conninfo(options["freetds"],
+                                  options["freetds-db"],
+                                  options["freetds-user"],
+                                  options["freetds-pass"]);
+	    schema = make_shared<freetds_schema>(conninfo);
+#else
+	    cerr << "Sorry, " PACKAGE_NAME " was compiled without FreeTDS support." << endl;
 #endif
       }
       else
@@ -185,6 +223,17 @@ int main(int argc, char *argv[])
 #else
 	cerr << "Sorry, " PACKAGE_NAME " was compiled without MonetDB support." << endl;
 	return 1;
+#endif
+      }
+      else if (options.count("freetds")) {
+#ifdef HAVE_LIBSYBDB
+        freetds_conninfo conninfo(options["freetds"],
+                                  options["freetds-db"],
+                                  options["freetds-user"],
+                                  options["freetds-pass"]);
+        dut = make_shared<dut_freetds>(conninfo);
+#else
+        cerr << "Sorry, " PACKAGE_NAME " was compiled without FreeTDS support." << endl;
 #endif
       }
       else
